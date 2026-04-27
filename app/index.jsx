@@ -1,10 +1,6 @@
-import React from 'react'
-import { Text,View} from 'react-native'
-import Welcome from './screens/welcome/welcome'
+import React from 'react';
+import AppNavigator from './navigation';
 
-export const index = () => {
-  return (
-      <Welcome />
-  )
-} 
-export default index
+export default function App() {
+  return <AppNavigator />;
+}
