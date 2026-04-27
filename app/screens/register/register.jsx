@@ -12,6 +12,7 @@ import {
   Poppins_600SemiBold,
   Poppins_700Bold
 } from '@expo-google-fonts/poppins';
+import { supabase } from '@/lib/supabase';
 
 export default function RegisterScreen({ navigation }) {
   const [fullName, setFullName] = useState('');
@@ -46,8 +47,21 @@ export default function RegisterScreen({ navigation }) {
 
     setLoading(true);
     try {
-      console.log('Registering:', { fullName, email, password });
       // await registerUser(fullName, email, password);
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: fullName,
+          },
+        },
+      });
+      if(error){
+        Alert.alert('Error', 'Registration failed: ' + error.message);
+        console.error('Registration error:', error);
+        return;
+      }
       Alert.alert('Success', 'Account created successfully!', [
         { text: 'Sign in', onPress: () => navigation.navigate('Login') }
       ]);

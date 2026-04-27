@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import {
   View, TextInput, TouchableOpacity, Text,
-  StyleSheet, KeyboardAvoidingView, Platform, Pressable
+  StyleSheet, KeyboardAvoidingView, Platform, Pressable,
+  Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
@@ -9,7 +10,7 @@ import AntDesign from 'react-native-vector-icons/AntDesign';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import { useFonts, Poppins_400Regular, Poppins_600SemiBold, Poppins_700Bold } from '@expo-google-fonts/poppins';
 import { useNavigation } from '@react-navigation/native';
-
+import { supabase } from '@/lib/supabase';
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -34,8 +35,22 @@ export default function LoginScreen() {
     try {
       console.log('Login attempt:', { email, password });
       // await loginUser(email, password);
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (error) {
+        alert('Login failed: ' + error.message);
+        console.error('Login error:', error);
+        return;
+      }
+        console.log('Login successful:', data);
+        Alert.alert('Success', 'Logged in successfully!');
+        // Optionally navigate to the main app screen here
+        navigation.navigate('Main');
     } catch (error) {
       alert('Login failed: ' + error.message);
+      console.error('Login error:', error);
     } finally {
       setLoading(false);
     }
