@@ -3,6 +3,7 @@ import { View, StyleSheet, Pressable } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
+import IconIonicons from 'react-native-vector-icons/Ionicons';
 
 import Home from '../screens/home/home';
 import Profile from '../screens/profile/profile';
@@ -16,14 +17,30 @@ function CustomTabBar({ state, descriptors, navigation }) {
   const insets = useSafeAreaInsets();
 
   const icons = {
-    Home: 'home',
-    AddPost: 'plus',
-    Profile: 'user',
-    Setting: 'settings',
+    Home: { lib: 'Feather', name: 'home' },
+    AddPost: { lib: 'Feather', name: 'plus-square' },
+    Profile: { lib: 'Feather', name: 'user' },
+    Setting: { lib: 'Feather', name: 'settings' },
+  };
+
+  const renderIcon = (routeName, isFocused) => {
+    const iconConfig = icons[routeName];
+    const IconComponent = iconConfig.lib === 'Feather' ? Icon : IconIonicons;
+    
+    if (routeName === 'AddPost') return null;
+    
+    return (
+      <IconComponent
+        name={iconConfig.name}
+        size={26}
+        color={isFocused ? '#000000' : '#8E8E93'}
+        strokeWidth={isFocused ? 2 : 1.5}
+      />
+    );
   };
 
   return (
-    <View style={[styles.tabBar, { paddingBottom: insets.bottom + 10 }]}>
+    <View style={[styles.tabBar, { paddingBottom: insets.bottom + 8 }]}>
       {state.routes.map((route, index) => {
         const isFocused = state.index === index;
         const isAdd = route.name === 'AddPost';
@@ -45,12 +62,12 @@ function CustomTabBar({ state, descriptors, navigation }) {
               key={route.key}
               onPress={onPress}
               style={({ pressed }) => [
-                styles.tabItem,
-                pressed && { opacity: 0.7 },
+                styles.addButtonContainer,
+                pressed && styles.addButtonPressed,
               ]}
             >
               <View style={styles.addButton}>
-                <Icon name="plus" size={20} color="#fff" />
+                <Icon name="plus" size={30} color="#fff" />
               </View>
             </Pressable>
           );
@@ -60,15 +77,12 @@ function CustomTabBar({ state, descriptors, navigation }) {
           <Pressable
             key={route.key}
             onPress={onPress}
-            style={styles.tabItem}
+            style={({ pressed }) => [
+              styles.tabItem,
+              pressed && styles.tabItemPressed,
+            ]}
           >
-            <View style={[styles.iconWrap, isFocused && styles.iconWrapActive]}>
-              <Icon
-                name={icons[route.name]}
-                size={20}
-                color={isFocused ? '#fff' : '#555'}
-              />
-            </View>
+            {renderIcon(route.name, isFocused)}
           </Pressable>
         );
       })}
@@ -80,7 +94,9 @@ export default function BottomTabs() {
   return (
     <Tab.Navigator
       tabBar={props => <CustomTabBar {...props} />}
-      screenOptions={{ headerShown: false }}
+      screenOptions={{ 
+        headerShown: false,
+      }}
     >
       <Tab.Screen name="Home" component={Home} />
       <Tab.Screen name="AddPost" component={AddPost} />
@@ -94,34 +110,39 @@ const styles = StyleSheet.create({
   tabBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#111111',
-    paddingTop: 12,
-    paddingHorizontal: 16,
-    borderTopWidth: 0,
+    justifyContent: 'space-around',
+    backgroundColor: '#FFFFFF',
+    paddingTop: 10,
+    paddingHorizontal: 20,
+    borderTopWidth: 0.5,
+    borderTopColor: '#DBDBDB',
   },
 
   tabItem: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 8,
   },
 
-  iconWrap: {
-    width: 44,
-    height: 36,
-    borderRadius: 10,
+  tabItemPressed: {
+    opacity: 0.5,
+  },
+
+  addButtonContainer: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
-  iconWrapActive: {
-    backgroundColor: '#2a2a2a',
+  addButtonPressed: {
+    transform: [{ scale: 0.9 }],
   },
 
   addButton: {
-    width: 46,
-    height: 46,
-    borderRadius: 14,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: TEAL,
     alignItems: 'center',
     justifyContent: 'center',
