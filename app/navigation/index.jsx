@@ -6,6 +6,7 @@ import BottomTabs from './BottomTabs';
 import Welcome from '../screens/welcome/welcome';
 import Login from '../screens/login/login';
 import Register from '../screens/register/register';
+import Comments from '../screens/comments/comments';
 
 
 const Stack = createNativeStackNavigator();
@@ -17,6 +18,7 @@ export default function AppNavigator() {
         <Stack.Screen name="Login" component={Login} />
         <Stack.Screen name="Register" component={Register} />
         <Stack.Screen name="Main" component={BottomTabs} />
+        <Stack.Screen name="Comments" component={Comments} />
       </Stack.Navigator>
     
   );

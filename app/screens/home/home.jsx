@@ -9,11 +9,12 @@ import {
   RefreshControl,
   ActivityIndicator,
   SafeAreaView,
-  Image 
+  Image,
+  Alert,
 } from "react-native";
 import { useFonts, Poppins_400Regular, Poppins_500Medium, Poppins_600SemiBold, Poppins_700Bold } from "@expo-google-fonts/poppins";
 import Icon from "react-native-vector-icons/Feather";
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { supabase } from '@/lib/supabase';
 
 const POSTS_BUCKET = (process.env.EXPO_PUBLIC_POSTS_BUCKET || 'posts').trim();
@@ -51,6 +52,7 @@ function tryExtractStoragePath(imageUrl) {
 }
 
 export default function Home() {
+  const navigation = useNavigation();
   const [fontsLoaded] = useFonts({
     Poppins_400Regular,
     Poppins_500Medium,
@@ -61,11 +63,19 @@ export default function Home() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState(null);
 
   // Fetch posts from API
   const fetchPosts = useCallback(async () => {
     try {
       setLoading(true);
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      const userId = user?.id || null;
+      setCurrentUserId(userId);
+
       const { data, error } = await supabase
         .from('posts')
         .select(
@@ -79,6 +89,52 @@ export default function Home() {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
+
+      const postIds = (data || []).map((row) => row.id).filter(Boolean);
+
+      let likesRows = [];
+      if (postIds.length > 0) {
+        const { data: likesData, error: likesError } = await supabase
+          .from('likes')
+          .select('post_id,user_id')
+          .in('post_id', postIds);
+
+        if (likesError) {
+          console.error('Error fetching likes:', likesError);
+        } else {
+          likesRows = likesData || [];
+        }
+      }
+
+      let commentsRows = [];
+      if (postIds.length > 0) {
+        const { data: commentsData, error: commentsError } = await supabase
+          .from('comments')
+          .select('post_id')
+          .in('post_id', postIds);
+
+        if (commentsError) {
+          console.error('Error fetching comments:', commentsError);
+        } else {
+          commentsRows = commentsData || [];
+        }
+      }
+
+      const likesCountByPost = {};
+      const likedByMe = new Set();
+      for (const like of likesRows) {
+        if (!like?.post_id) continue;
+        likesCountByPost[like.post_id] = (likesCountByPost[like.post_id] || 0) + 1;
+        if (userId && like.user_id === userId) {
+          likedByMe.add(like.post_id);
+        }
+      }
+
+      const commentsCountByPost = {};
+      for (const c of commentsRows) {
+        if (!c?.post_id) continue;
+        commentsCountByPost[c.post_id] = (commentsCountByPost[c.post_id] || 0) + 1;
+      }
 
       const mapped = await Promise.all((data || []).map(async (row) => {
         const profile = Array.isArray(row?.users) ? row.users[0] : row?.users;
@@ -121,9 +177,9 @@ export default function Home() {
           time,
           content: row.content || '',
           image,
-          liked: false,
-          likes: 0,
-          comments: 0,
+          liked: likedByMe.has(row.id),
+          likes: likesCountByPost[row.id] || 0,
+          comments: commentsCountByPost[row.id] || 0,
         };
       }));
 
@@ -134,6 +190,50 @@ export default function Home() {
       setLoading(false);
     }
   }, []);
+
+  const handleLike = async (postId) => {
+    if (!currentUserId) {
+      Alert.alert('Sign in required', 'Please sign in to like posts.');
+      return;
+    }
+
+    const existing = posts.find((p) => p.id === postId);
+    const wasLiked = !!existing?.liked;
+
+    // Optimistic UI update
+    setPosts((prev) =>
+      prev.map((p) =>
+        p.id === postId
+          ? {
+              ...p,
+              liked: !wasLiked,
+              likes: Math.max(0, (p.likes || 0) + (wasLiked ? -1 : 1)),
+            }
+          : p
+      )
+    );
+
+    try {
+      if (wasLiked) {
+        const { error } = await supabase
+          .from('likes')
+          .delete()
+          .eq('post_id', postId)
+          .eq('user_id', currentUserId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('likes').insert({
+          post_id: postId,
+          user_id: currentUserId,
+        });
+        if (error) throw error;
+      }
+    } catch (error) {
+      console.error('Like toggle failed:', error);
+      Alert.alert('Error', 'Failed to update like.');
+      fetchPosts();
+    }
+  };
 
   // Fetch stories from API
   const fetchStories = async () => {
@@ -203,7 +303,10 @@ export default function Home() {
           <Text style={styles.actionText}>{item.likes}</Text>
         </Pressable>
         
-        <Pressable onPress={() => alert('Comments')} style={styles.actionButton}>
+        <Pressable
+          onPress={() => navigation.navigate('Comments', { postId: item.id })}
+          style={styles.actionButton}
+        >
           <Icon name="message-circle" size={22} color="#666" />
           <Text style={styles.actionText}>{item.comments}</Text>
         </Pressable>
@@ -218,19 +321,6 @@ export default function Home() {
       </View>
     </View>
   );
-
-  const handleLike = (postId) => {
-    // TODO: API call to like/unlike post
-    setPosts(posts.map(post => 
-      post.id === postId 
-        ? { 
-            ...post, 
-            liked: !post.liked, 
-            likes: post.liked ? post.likes - 1 : post.likes + 1 
-          }
-        : post
-    ));
-  };
 
   if (!fontsLoaded) {
     return null;
