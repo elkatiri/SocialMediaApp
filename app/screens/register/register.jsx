@@ -13,6 +13,7 @@ import {
   Poppins_700Bold
 } from '@expo-google-fonts/poppins';
 import { supabase } from '@/lib/supabase';
+import { ensureUserProfile } from '@/lib/ensureUserProfile';
 
 export default function RegisterScreen({ navigation }) {
   const [fullName, setFullName] = useState('');
@@ -61,6 +62,14 @@ export default function RegisterScreen({ navigation }) {
         Alert.alert('Error', 'Registration failed: ' + error.message);
         console.error('Registration error:', error);
         return;
+      }
+
+      if (data?.user) {
+        try {
+          await ensureUserProfile(data.user);
+        } catch (profileError) {
+          console.warn('User profile upsert failed (may require login first):', profileError);
+        }
       }
       Alert.alert('Success', 'Account created successfully!', [
         { text: 'Sign in', onPress: () => navigation.navigate('Login') }

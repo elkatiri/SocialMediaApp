@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useState, useEffect } from "react";
 import { 
   View, 
   Text, 
@@ -8,10 +8,47 @@ import {
   FlatList,
   RefreshControl,
   ActivityIndicator,
-  SafeAreaView 
+  SafeAreaView,
+  Image 
 } from "react-native";
 import { useFonts, Poppins_400Regular, Poppins_500Medium, Poppins_600SemiBold, Poppins_700Bold } from "@expo-google-fonts/poppins";
 import Icon from "react-native-vector-icons/Feather";
+import { useFocusEffect } from '@react-navigation/native';
+import { supabase } from '@/lib/supabase';
+
+const POSTS_BUCKET = (process.env.EXPO_PUBLIC_POSTS_BUCKET || 'posts').trim();
+
+function tryExtractStoragePath(imageUrl) {
+  if (typeof imageUrl !== 'string') return null;
+  const url = imageUrl.trim();
+  if (!url) return null;
+
+  // If it's already a plain storage path (e.g. userId/123.jpg)
+  if (!/^https?:\/\//i.test(url)) return url;
+
+  // Supabase public URL format: .../storage/v1/object/public/<bucket>/<path>
+  const marker = '/storage/v1/object/public/';
+  const idx = url.indexOf(marker);
+  if (idx !== -1) {
+    const after = url.slice(idx + marker.length);
+    const prefix = `${POSTS_BUCKET}/`;
+    if (after.startsWith(prefix)) return after.slice(prefix.length);
+  }
+
+  // Signed URL format (can vary), try to find '/storage/v1/object/sign/<bucket>/'
+  const marker2 = '/storage/v1/object/sign/';
+  const idx2 = url.indexOf(marker2);
+  if (idx2 !== -1) {
+    const after = url.slice(idx2 + marker2.length);
+    const prefix = `${POSTS_BUCKET}/`;
+    if (after.startsWith(prefix)) {
+      const rest = after.slice(prefix.length);
+      return rest.split('?')[0];
+    }
+  }
+
+  return null;
+}
 
 export default function Home() {
   const [fontsLoaded] = useFonts({
@@ -26,22 +63,77 @@ export default function Home() {
   const [refreshing, setRefreshing] = useState(false);
 
   // Fetch posts from API
-  const fetchPosts = async () => {
+  const fetchPosts = useCallback(async () => {
     try {
       setLoading(true);
-      // TODO: Replace with your API endpoint
-      // const response = await fetch('YOUR_API_URL/posts');
-      // const data = await response.json();
-      // setPosts(data);
-      
-      // Temporary empty data structure
-      setPosts([]);
+      const { data, error } = await supabase
+        .from('posts')
+        .select(
+          `id,
+           content,
+           image_url,
+           created_at,
+           user_id,
+           users ( username, avatar_url )`
+        )
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const mapped = await Promise.all((data || []).map(async (row) => {
+        const profile = Array.isArray(row?.users) ? row.users[0] : row?.users;
+        const createdAt = row?.created_at ? new Date(row.created_at) : null;
+        const time = createdAt
+          ? createdAt.toLocaleString()
+          : '';
+
+        const username = profile?.username || 'User';
+
+        let image = null;
+        if (row.image_url) {
+          const extractedPath = tryExtractStoragePath(row.image_url);
+          if (extractedPath) {
+            try {
+              const { data: signed, error: signedError } = await supabase.storage
+                .from(POSTS_BUCKET)
+                .createSignedUrl(extractedPath, 60 * 60);
+              if (!signedError && signed?.signedUrl) {
+                image = signed.signedUrl;
+              } else {
+                image = /^https?:\/\//i.test(row.image_url) ? row.image_url : null;
+              }
+            } catch (e) {
+              image = /^https?:\/\//i.test(row.image_url) ? row.image_url : null;
+            }
+          } else {
+            image = row.image_url;
+          }
+        }
+
+        return {
+          id: row.id,
+          user_id: row.user_id,
+          name: username,
+          user: username,
+          avatar:
+            profile?.avatar_url ||
+            `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}`,
+          time,
+          content: row.content || '',
+          image,
+          liked: false,
+          likes: 0,
+          comments: 0,
+        };
+      }));
+
+      setPosts(mapped);
     } catch (error) {
       console.error('Error fetching posts:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   // Fetch stories from API
   const fetchStories = async () => {
@@ -66,6 +158,12 @@ export default function Home() {
     fetchPosts();
     fetchStories();
   }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchPosts();
+    }, [fetchPosts])
+  );
 
   const renderPost = ({ item }) => (
     <View style={styles.post}>

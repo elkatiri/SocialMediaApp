@@ -11,6 +11,7 @@ import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import { useFonts, Poppins_400Regular, Poppins_600SemiBold, Poppins_700Bold } from '@expo-google-fonts/poppins';
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '@/lib/supabase';
+import { ensureUserProfile } from '@/lib/ensureUserProfile';
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -43,6 +44,10 @@ export default function LoginScreen() {
         alert('Login failed: ' + error.message);
         console.error('Login error:', error);
         return;
+      }
+
+      if (data?.user) {
+        await ensureUserProfile(data.user);
       }
         console.log('Login successful:', data);
         Alert.alert('Success', 'Logged in successfully!');
