@@ -12,6 +12,7 @@ import { useFonts, Poppins_400Regular, Poppins_600SemiBold, Poppins_700Bold } fr
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '@/lib/supabase';
 import { ensureUserProfile } from '@/lib/ensureUserProfile';
+import { signInWithGoogle } from '@/lib/signInWithGoogle';
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -56,6 +57,28 @@ export default function LoginScreen() {
     } catch (error) {
       alert('Login failed: ' + error.message);
       console.error('Login error:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setLoading(true);
+    try {
+      await signInWithGoogle();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        await ensureUserProfile(user);
+      }
+      Alert.alert('Success', 'Logged in with Google!');
+      navigation.navigate('Main');
+    } catch (error) {
+      const message =
+        typeof error?.message === 'string' ? error.message : 'Google sign-in failed.';
+      Alert.alert('Error', message);
+      console.error('Google login error:', error);
     } finally {
       setLoading(false);
     }
@@ -143,9 +166,14 @@ export default function LoginScreen() {
 
         {/* Social buttons */}
         <View style={styles.socialRow}>
-          <TouchableOpacity style={styles.googleBtn} activeOpacity={0.8}>
+          <TouchableOpacity
+            style={styles.googleBtn}
+            activeOpacity={0.8}
+            onPress={handleGoogleLogin}
+            disabled={loading}
+          >
             <AntDesign name="google" size={18} color="#EA4335" />
-            <Text style={styles.googleText}>Google</Text>
+            <Text style={styles.googleText}>{loading ? 'Please wait…' : 'Google'}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.appleBtn} activeOpacity={0.8}>

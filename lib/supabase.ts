@@ -51,6 +51,7 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
   },
   auth: {
     storage: AsyncStorage,
+    flowType: 'pkce',
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
