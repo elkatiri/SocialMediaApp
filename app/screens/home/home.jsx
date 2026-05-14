@@ -64,6 +64,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [currentUserId, setCurrentUserId] = useState(null);
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
 
   // Fetch posts from API
   const fetchPosts = useCallback(async () => {
@@ -191,6 +192,40 @@ export default function Home() {
     }
   }, []);
 
+  const fetchUnreadNotificationsCount = useCallback(async () => {
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError) throw userError;
+      if (!user?.id) {
+        setUnreadNotificationsCount(0);
+        return;
+      }
+
+      const { count, error } = await supabase
+        .from('notifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('is_read', false);
+
+      if (error) {
+        if (error?.code === '42P01') {
+          // notifications table not created yet
+          setUnreadNotificationsCount(0);
+          return;
+        }
+        throw error;
+      }
+
+      setUnreadNotificationsCount(typeof count === 'number' ? count : 0);
+    } catch (e) {
+      console.warn('Fetch unread notifications count failed:', e);
+    }
+  }, []);
+
   const handleLike = async (postId) => {
     if (!currentUserId) {
       Alert.alert('Sign in required', 'Please sign in to like posts.');
@@ -250,6 +285,7 @@ export default function Home() {
   const onRefresh = async () => {
     setRefreshing(true);
     await fetchPosts();
+    await fetchUnreadNotificationsCount();
     await fetchStories();
     setRefreshing(false);
   };
@@ -262,8 +298,34 @@ export default function Home() {
   useFocusEffect(
     React.useCallback(() => {
       fetchPosts();
-    }, [fetchPosts])
+      fetchUnreadNotificationsCount();
+    }, [fetchPosts, fetchUnreadNotificationsCount])
   );
+
+  useEffect(() => {
+    if (!currentUserId) return;
+
+    // Realtime updates (optional). If Realtime isn't enabled, this safely does nothing.
+    const channel = supabase
+      .channel('home-notifications')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${currentUserId}`,
+        },
+        () => {
+          fetchUnreadNotificationsCount();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentUserId, fetchUnreadNotificationsCount]);
 
   const renderPost = ({ item }) => (
     <View style={styles.post}>
@@ -355,9 +417,18 @@ export default function Home() {
           </View>
 
           <View style={styles.rightSection}>
-            <Pressable onPress={() => alert("Notifications")} style={styles.iconBtn}>
+            <Pressable
+              onPress={() => navigation.navigate('Users', { openPanel: 'activity' })}
+              style={styles.iconBtn}
+            >
               <Icon name="bell" size={22} color="#333" />
-              <View style={styles.notificationBadge} />
+              {unreadNotificationsCount > 0 ? (
+                <View style={styles.notificationBadge}>
+                  <Text style={styles.notificationBadgeText}>
+                    {unreadNotificationsCount > 99 ? '99+' : String(unreadNotificationsCount)}
+                  </Text>
+                </View>
+              ) : null}
             </Pressable>
 
             <Pressable onPress={() => alert("Messages")} style={styles.iconBtn}>
@@ -440,12 +511,22 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 6,
     right: 6,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 5,
     backgroundColor: "#ff3b30",
     borderWidth: 1.5,
     borderColor: "#fff",
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  notificationBadgeText: {
+    fontFamily: "Poppins_700Bold",
+    fontSize: 10,
+    color: '#fff',
+    lineHeight: 12,
   },
 
   feed: {

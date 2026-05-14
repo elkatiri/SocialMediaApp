@@ -6,6 +6,7 @@ import {
     Image,
     Pressable,
     SafeAreaView,
+    ScrollView,
     StyleSheet,
     Text,
     TextInput,
@@ -86,12 +87,14 @@ export default function ProfileScreen({ navigation }) {
     const [userProfile, setUserProfile] = useState(null);
     const [userId, setUserId] = useState(null);
     const [posts, setPosts] = useState([]);
+    const [friends, setFriends] = useState([]);
 
     const [editingPostId, setEditingPostId] = useState(null);
     const [editingText, setEditingText] = useState('');
     const [savingEdit, setSavingEdit] = useState(false);
 
     const postsCount = useMemo(() => posts.length, [posts]);
+    const friendsCount = useMemo(() => friends.length, [friends]);
 
     const fetchMine = useCallback(async () => {
         try {
@@ -106,6 +109,7 @@ export default function ProfileScreen({ navigation }) {
                 setUserId(null);
                 setUserProfile(null);
                 setPosts([]);
+                setFriends([]);
                 return;
             }
 
@@ -120,6 +124,44 @@ export default function ProfileScreen({ navigation }) {
 
             if (profileError) throw profileError;
             setUserProfile(profileRow);
+
+            // Friends (accepted requests)
+            try {
+                const { data: acceptedRows, error: acceptedError } = await supabase
+                    .from('friend_requests')
+                    .select('from_user, to_user')
+                    .eq('status', 'accepted')
+                    .or(`from_user.eq.${user.id},to_user.eq.${user.id}`);
+
+                if (acceptedError) throw acceptedError;
+
+                const friendIds = new Set();
+                for (const row of acceptedRows || []) {
+                    if (!row?.from_user || !row?.to_user) continue;
+                    const otherId = row.from_user === user.id ? row.to_user : row.from_user;
+                    if (otherId && otherId !== user.id) friendIds.add(otherId);
+                }
+
+                if (friendIds.size === 0) {
+                    setFriends([]);
+                } else {
+                    const { data: friendProfiles, error: friendsError } = await supabase
+                        .from('users')
+                        .select('id, username, avatar_url')
+                        .in('id', Array.from(friendIds))
+                        .order('username', { ascending: true });
+
+                    if (friendsError) throw friendsError;
+                    setFriends(Array.isArray(friendProfiles) ? friendProfiles : []);
+                }
+            } catch (friendsError) {
+                // If the table doesn't exist yet, don't block the profile.
+                if (friendsError?.code === '42P01') {
+                    setFriends([]);
+                } else {
+                    console.warn('Friends fetch failed:', friendsError);
+                }
+            }
 
             const { data: myPosts, error: postsError } = await supabase
                 .from('posts')
@@ -267,8 +309,8 @@ export default function ProfileScreen({ navigation }) {
                     <Text style={styles.statLabel}>Followers</Text>
                 </View>
                 <View style={styles.stat}>
-                    <Text style={styles.statNumber}>0</Text>
-                    <Text style={styles.statLabel}>Following</Text>
+                    <Text style={styles.statNumber}>{friendsCount}</Text>
+                    <Text style={styles.statLabel}>Friends</Text>
                 </View>
                 <View style={styles.stat}>
                     <Text style={styles.statNumber}>{postsCount}</Text>
@@ -298,6 +340,37 @@ export default function ProfileScreen({ navigation }) {
                     <Icon name="settings" size={16} color="#111" style={styles.btnIcon} />
                     <Text style={styles.secondaryButtonText}>Settings</Text>
                 </Pressable>
+            </View>
+
+            <View style={styles.friendsBlock}>
+                <Text style={styles.friendsTitle}>Friends</Text>
+                {friendsCount === 0 ? (
+                    <Text style={styles.friendsEmpty}>No friends yet.</Text>
+                ) : (
+                    <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.friendsRow}
+                    >
+                        {friends.map((f) => (
+                            <View key={f.id} style={styles.friendChip}>
+                                <Image
+                                    source={{
+                                        uri:
+                                            f.avatar_url ||
+                                            `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                                                f.username || 'User'
+                                            )}`,
+                                    }}
+                                    style={styles.friendAvatar}
+                                />
+                                <Text style={styles.friendName} numberOfLines={1}>
+                                    {f.username || 'User'}
+                                </Text>
+                            </View>
+                        ))}
+                    </ScrollView>
+                )}
             </View>
 
             {editingPostId ? (
@@ -460,6 +533,50 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         paddingHorizontal: 16,
         paddingTop: 16,
+    },
+
+    friendsBlock: {
+        paddingHorizontal: 16,
+        paddingTop: 14,
+    },
+
+    friendsTitle: {
+        fontFamily: 'Poppins_700Bold',
+        fontSize: 14,
+        color: '#111',
+        marginBottom: 10,
+    },
+
+    friendsEmpty: {
+        fontFamily: 'Poppins_400Regular',
+        fontSize: 13,
+        color: '#666',
+    },
+
+    friendsRow: {
+        paddingRight: 8,
+    },
+
+    friendChip: {
+        width: 72,
+        alignItems: 'center',
+        marginRight: 12,
+    },
+
+    friendAvatar: {
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        backgroundColor: '#F5F5F5',
+    },
+
+    friendName: {
+        marginTop: 6,
+        fontFamily: 'Poppins_500Medium',
+        fontSize: 12,
+        color: '#111',
+        maxWidth: 72,
+        textAlign: 'center',
     },
 
     primaryButton: {

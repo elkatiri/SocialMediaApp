@@ -25,6 +25,79 @@ In the output, you'll find options to open the app in a
 
 You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
 
+## Friend requests + notifications (Supabase)
+
+The Users screen (browse accounts, send/accept requests, and see acceptance notifications) expects these tables in Supabase:
+
+```sql
+-- Friend requests between users
+create table if not exists public.friend_requests (
+   id uuid primary key default gen_random_uuid(),
+   from_user uuid not null references public.users(id) on delete cascade,
+   to_user uuid not null references public.users(id) on delete cascade,
+   status text not null default 'pending' check (status in ('pending', 'accepted')),
+   created_at timestamptz not null default now(),
+   updated_at timestamptz not null default now(),
+   constraint friend_requests_not_self check (from_user <> to_user)
+);
+
+create unique index if not exists friend_requests_from_to_unique
+   on public.friend_requests (from_user, to_user);
+
+create index if not exists friend_requests_to_user_status_idx
+   on public.friend_requests (to_user, status);
+
+
+-- In-app notifications (used for "request received" + "your request was accepted")
+create table if not exists public.notifications (
+   id uuid primary key default gen_random_uuid(),
+   user_id uuid not null references public.users(id) on delete cascade,
+   actor_user_id uuid references public.users(id) on delete set null,
+   type text not null,
+   is_read boolean not null default false,
+   created_at timestamptz not null default now()
+);
+
+create index if not exists notifications_user_id_created_at_idx
+   on public.notifications (user_id, created_at desc);
+
+
+-- RLS (required if you enabled RLS on these tables)
+alter table public.friend_requests enable row level security;
+alter table public.notifications enable row level security;
+
+-- friend_requests: sender can insert, both parties can read, receiver can accept.
+create policy "friend_requests_insert_own" on public.friend_requests
+   for insert
+   with check (from_user = auth.uid());
+
+create policy "friend_requests_select_party" on public.friend_requests
+   for select
+   using (from_user = auth.uid() or to_user = auth.uid());
+
+create policy "friend_requests_accept_as_receiver" on public.friend_requests
+   for update
+   using (to_user = auth.uid())
+   with check (to_user = auth.uid());
+
+-- notifications: actor inserts (e.g. receiver inserts notification for sender), recipient reads & marks read.
+-- types used by the app: 'friend_request_received', 'friend_request_accepted'
+create policy "notifications_insert_by_actor" on public.notifications
+   for insert
+   with check (actor_user_id = auth.uid());
+
+create policy "notifications_select_own" on public.notifications
+   for select
+   using (user_id = auth.uid());
+
+create policy "notifications_update_own" on public.notifications
+   for update
+   using (user_id = auth.uid())
+   with check (user_id = auth.uid());
+```
+
+If you want to allow rejecting requests, add `rejected` to the status check and handle it in the app.
+
 ## Get a fresh project
 
 When you're ready, run:
