@@ -66,6 +66,16 @@ export default function Home() {
   const [currentUserId, setCurrentUserId] = useState(null);
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
 
+  const openMessages = useCallback(() => {
+    navigation.navigate('Messages');
+  }, [navigation]);
+
+  const openSettings = useCallback(() => {
+    const parent = navigation.getParent?.();
+    if (parent?.navigate) parent.navigate('Setting');
+    else navigation.navigate('Setting');
+  }, [navigation]);
+
   // Fetch posts from API
   const fetchPosts = useCallback(async () => {
     try {
@@ -305,25 +315,38 @@ export default function Home() {
   useEffect(() => {
     if (!currentUserId) return;
 
-    // Realtime updates (optional). If Realtime isn't enabled, this safely does nothing.
-    const channel = supabase
-      .channel('home-notifications')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'notifications',
-          filter: `user_id=eq.${currentUserId}`,
-        },
-        () => {
-          fetchUnreadNotificationsCount();
-        }
-      )
-      .subscribe();
+    // Realtime updates (optional). Keep this defensive so it never crashes the screen.
+    let channel;
+    try {
+      if (typeof supabase?.channel !== 'function') return;
+
+      channel = supabase.channel('home-notifications');
+      if (!channel || typeof channel.on !== 'function') return;
+
+      channel
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'notifications',
+            filter: `user_id=eq.${currentUserId}`,
+          },
+          () => {
+            fetchUnreadNotificationsCount();
+          }
+        )
+        .subscribe();
+    } catch (e) {
+      console.warn('Home notifications realtime setup failed:', e);
+    }
 
     return () => {
-      supabase.removeChannel(channel);
+      try {
+        if (channel) supabase.removeChannel(channel);
+      } catch {
+        // ignore
+      }
     };
   }, [currentUserId, fetchUnreadNotificationsCount]);
 
@@ -431,8 +454,12 @@ export default function Home() {
               ) : null}
             </Pressable>
 
-            <Pressable onPress={() => alert("Messages")} style={styles.iconBtn}>
+            <Pressable onPress={openMessages} style={styles.iconBtn}>
               <Icon name="message-square" size={22} color="#333" />
+            </Pressable>
+
+            <Pressable onPress={openSettings} style={styles.iconBtn}>
+              <Icon name="settings" size={22} color="#333" />
             </Pressable>
           </View>
         </View>

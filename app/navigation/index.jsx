@@ -7,6 +7,9 @@ import Welcome from '../screens/welcome/welcome';
 import Login from '../screens/login/login';
 import Register from '../screens/register/register';
 import Comments from '../screens/comments/comments';
+import Chat from '../screens/messages/chat';
+import NewMessage from '../screens/messages/newMessage';
+import Setting from '../screens/setting/setting';
 
 
 const Stack = createNativeStackNavigator();
@@ -19,6 +22,9 @@ export default function AppNavigator() {
         <Stack.Screen name="Register" component={Register} />
         <Stack.Screen name="Main" component={BottomTabs} />
         <Stack.Screen name="Comments" component={Comments} />
+        <Stack.Screen name="NewMessage" component={NewMessage} />
+        <Stack.Screen name="Chat" component={Chat} />
+        <Stack.Screen name="Setting" component={Setting} />
       </Stack.Navigator>
     
   );
